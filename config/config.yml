@@ -1,0 +1,32 @@
+## Please see https://steveped.github.io/GRAVI/editing-yaml.html for a description of this file
+samples:
+  file: "config/samples.tsv"
+
+paths:
+  bam: "data/bam"
+  rnaseq:
+    # Nest by source
+    dummy: "data/external/dummy_rnaseq.tsv"
+
+comparisons:
+  fc: 1.2
+  fdr: 0.05
+  paired: false
+  filter_q: 0.6
+  contrasts:
+    - ["Control", "Treat"]
+
+genome:
+  build: "GRCh37"
+  gencode: "33"
+
+peaks:
+  macs2:
+    gsize: "hs"
+    fdr: 0.05
+    keep_duplicates: "all"
+    max_gap: 200 # This helps capture peaks where the NFR would lead to 2 peaks being called
+  qc:
+    min_prop_peaks: 0.1
+    min_prop_reps: 0.3
+

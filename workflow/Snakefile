@@ -1,0 +1,254 @@
+import pandas as pd
+import os
+import re
+import subprocess
+import urllib
+import sys
+import random
+import itertools
+
+configfile: "config/config.yml"
+
+## Figure out how to run check_yaml from here if possible
+## python scripts/check_yaml.py
+
+## Set the here file as defined by here::here() for Rmarkdown files
+## In a valid Rproj file is found, use that. Otherwise use .here
+def get_here_file():
+	wd = os.getcwd()
+	rproj = os.path.basename(wd) + ".Rproj"
+	rproj_path = os.path.join(wd, rproj)
+	here_file = os.path.join(wd, ".here")
+	if os.path.isfile(rproj_path):
+		## Check contents of file for Version in line 1
+		with open(rproj_path) as f:
+			ln = f.readline().rstrip()
+		if 'Version:' in ln:
+			here_file = rproj_path
+	return(here_file)
+
+####################################
+## Check all external files exist ##
+####################################
+all_exist=True
+# if config['external']['rnaseq'] != '':
+# 	if not os.path.isfile(config['external']['rnaseq']):
+# 		all_exist=False
+# 		print(config['external']['rnaseq'] + " does not exist")
+
+
+if not all_exist:
+	sys.exit(1)
+
+def get_ucsc_genome(x):
+	map = pd.Series(['hg19', 'hg38'], index = ['GRCh37', 'GRCh38'])
+	if not x in map.keys():
+		print("The only currently supported genome builds are:")
+		print(*map.keys(), sep = ' & ')
+		sys.exit(1)
+	else:
+		return(map[x])
+
+def check_git(x = "."):
+	is_installed = subprocess.run(
+    	['which', 'git'], universal_newlines=True, check=True,
+    	stdout=subprocess.PIPE
+	)
+	path = os.path.join(x, ".git")
+	repo_exists = os.path.isdir(path)
+	if is_installed and repo_exists:
+		ret_val = True
+		print(
+			"Viable git repository detected. Files will be added when created",
+			file = sys.stderr
+		)
+	else:
+		ret_val = False
+		print("No viable git repository detected", file = sys.stderr)
+	return(ret_val)
+
+
+# Define all contrasts
+# x will be config['comparisons']['contrasts']:
+def make_contrasts(x):
+	ret_val = []
+	for comp in x:
+		ref = comp[0]
+		tgt_ref = set(df['source'][df['treat'] == ref])
+		treat = comp[1]
+		tgt_treat = set(df['source'][df['treat'] == treat])
+		comp_tgts = list(tgt_ref.intersection(tgt_treat))
+		for t in comp_tgts:
+			ret_val.extend([t + "_" + ref + "_" + treat])
+	return(ret_val)
+
+
+def make_pairwise(x):
+	ret_val = []
+	all_cont = make_contrasts(x)
+	all_cont.sort()
+	all_pairs = list(
+		itertools.combinations(all_cont, 2)
+	)
+	for p in all_pairs:
+		ret_val.extend([p[0] + "_" + p[1]])
+	return(ret_val)
+
+
+
+###############################################################
+## Check whether Git is installed & the directory has a repo ##
+###############################################################
+git_add = check_git(".")
+git_tries = 100
+# git_add = False
+
+####################
+## Define Samples ##
+####################
+df = pd.read_table(config['samples']['file'])
+
+## Now set all values as required
+samples = list(set(df['sample']))
+sources = list(set(df['source']))
+treats = list(set(df['treat']))
+pairs=make_pairwise(config['comparisons']['contrasts'])
+
+###############
+## Key Paths ##
+###############
+here_file = get_here_file()
+bam_path = config['paths']['bam']
+rmd_path = "analysis"
+annotation_path = os.path.join("output", "annotations")
+diff_path = os.path.join("output", "differential_binding")
+macs2_path = os.path.join("output", "macs2")
+log_path = os.path.join("workflow", "logs")
+
+###############################
+## External Annotation Files ##
+###############################
+## These are required input for multiple steps
+ucsc_build = get_ucsc_genome(config['genome']['build'])
+gtf = os.path.join(
+	annotation_path,
+	"gencode.v" + config['genome']['gencode'] + "lift" +
+	config['genome']['build'][-2:] +
+	".annotation.gtf.gz"
+)
+blacklist = os.path.join(annotation_path, "blacklist.bed.gz")
+chrom_sizes = os.path.join(annotation_path, "chrom.sizes")
+
+#####################
+## Prepare Outputs ##
+#####################
+ALL_OUTPUTS = []
+
+#####################################
+## Annotations Defined in worfklow ##
+#####################################
+
+ALL_RDS = expand(
+	os.path.join(annotation_path, "{file}.rds"),
+	file = ['all_gr', 'colours', 'gene_regions', 'seqinfo', 'trans_models','tss']
+)
+ALL_OUTPUTS.extend(ALL_RDS)
+
+#######################
+## Rmarkdown Outputs ##
+#######################
+HTML_OUT = expand(
+	os.path.join("docs", "{file}.html"),
+	file = ['annotation_description']
+)
+
+
+## Macs2 Summaries
+HTML_OUT.extend(
+	expand(
+		os.path.join("docs", "{source}_macs2_summary.html"),
+		source = sources
+	)
+)
+
+
+# ## Differential Binding
+# HTML_OUT.extend(
+# 	expand(
+# 		os.path.join("docs", "{cont}_differential_binding.html"),
+# 		cont = make_contrasts(config['comparisons']['contrasts'])
+# 	)
+# )
+
+# ## Pairwise Comparisons: Only if required
+# if pairs:
+# 	HTML_OUT.extend(
+# 		expand(
+# 			os.path.join("docs", "{comp}_pairwise_comparison.html"),
+# 			comp = pairs
+# 		)
+# 	)
+
+
+ALL_OUTPUTS.extend(HTML_OUT)
+## Keep the final index separate for easier passing to other rules
+ALL_OUTPUTS.extend([os.path.join("docs", "index.html")])
+
+## Peaks generated from the Rmd files
+CONS_PEAKS = expand(
+	os.path.join(macs2_path, "{source}", "{file}"),
+	source = sources,
+	file = ['consensus_peaks.bed', 'oracle_peaks.rds']
+)
+ALL_OUTPUTS.extend(CONS_PEAKS)
+
+
+###########################
+## Peak Files from macs2 ##
+###########################
+indiv_pre = df[['source', 'sample']].apply(
+	lambda row: '/'.join(row.values.astype(str)), axis=1
+)
+INDIV_PEAKS = expand(
+	os.path.join(macs2_path, "{path}_peaks.narrowPeak"),
+	path = indiv_pre
+)
+ALL_OUTPUTS.extend(INDIV_PEAKS)
+merged_pre = set(
+	df[['source', 'treat']].apply(
+		lambda row: '/'.join(row.values.astype(str)), axis=1
+	)
+)
+MERGED_PEAKS = expand(
+	os.path.join(macs2_path, "{pre}_merged_peaks.narrowPeak"),
+	pre = merged_pre
+)
+ALL_OUTPUTS.extend(MERGED_PEAKS)
+
+
+##################
+## BigWig Files ##
+##################
+INDIV_BW = expand(
+	os.path.join(macs2_path, "{path}_treat_pileup.{suffix}"),
+	path = indiv_pre,
+	suffix = ['bw']#, 'summary']
+)
+ALL_OUTPUTS.extend(INDIV_BW)
+MERGED_BW = expand(
+	os.path.join(macs2_path, "{path}_merged_treat_pileup.{suffix}"),
+	path = merged_pre,
+	suffix = ['bw', 'summary']
+)
+ALL_OUTPUTS.extend(MERGED_BW)
+
+rule all:
+    input:
+        ALL_OUTPUTS
+
+include: "rules/samtools.smk"
+include: "rules/rmarkdown.smk"
+include: "rules/macs2.smk"
+include: "rules/annotations.smk"
+include: "rules/differential_binding.smk"
+include: "rules/pairwise_comparisons.smk"
