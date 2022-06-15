@@ -451,14 +451,14 @@ consensus_peaks <- oracle_peaks %>%
     peak = round(vapply(peak_position, median, numeric(1)) - start, 0),
     region = bestOverlap(
       ., 
-      lapply(gene_regions, select, region) %>% 
+      lapply(gene_regions, plyranges::select, region) %>% 
         GRangesList() %>% 
         unlist(),
       var = "region"
     ) %>% 
       factor(levels = regions)
   ) %>% 
-  select(-keep, -peak_position)
+  plyranges::select(-keep, -peak_position)
 ```
 
 A set of treatment-specific `r source` *oracle peaks* was defined for each condition by comparing the peaks detected when merging all treatment-specific samples, against those detected within each replicate.
@@ -682,7 +682,7 @@ if (any_detected){
         )
       ) %>%
       splitAsList(.$status) %>%
-      lapply(select, -status) %>%
+      lapply(plyranges::select, -status) %>%
       GRangesList()
     gene_col <- colours$direction %>%
       setNames(str_to_title(names(.)))
@@ -816,7 +816,7 @@ df <- gene_regions %>%
     mc.cores = length(gene_regions)
   ) %>% 
   lapply(as_tibble) %>% 
-  lapply(select, region, marked, detected) %>% 
+  lapply(dplyr::select, region, marked, detected) %>% 
   bind_rows(.id = "name") %>% 
   mutate(name = factor(name, levels = names(gene_regions))) %>% 
   group_by(name, region) %>% 
@@ -920,7 +920,7 @@ b <- consensus_peaks %>%
   ) %>% 
   mutate(d = start + width/2 - tss) %>%
   as.data.frame() %>% 
-  select(d) %>% 
+  plyranges::select(d) %>% 
   arrange(abs(d)) %>% 
   mutate(
     q = seq_along(d) / nrow(.)
@@ -1040,7 +1040,7 @@ rpmpbp <- bfl %>%
   as_tibble()
 ```
 
-### Enhancer Width Vs Signal
+#### Enhancer Width Vs Signal
 
 ```{r plot-width-rpmpbp, fig.width=8, fig.height=6, fig.cap = "*Relationship between merged peak width and Reads Per Million per Base Pair.*"}
 rpmpbp %>%
@@ -1051,7 +1051,7 @@ rpmpbp %>%
   scale_x_log10() 
 ```
 
-### ROSE Cutoff Plot
+#### ROSE Cutoff Plot
 
 ```{r plotRose, fig.height=6, fig.width=8, fig.cap="Super-Enhancer Detection Using ROSE"}
 calculate_cutoff <- function(inputVector, drawPlot=TRUE,...){
@@ -1090,25 +1090,8 @@ se <- rpmpbp %>%
 During preparation the original `r comma(length(enh))` enahncers were merged into `r comma(length(candidate_se))` regions, with widths ranging from 1 to `r round(max(width(candidate_se))/1e3, 1)`kb.
 After running ROSE, `r comma(length(se))` putative super-enhancers were detected.
 
-### The Highest Signal Super-Enhancer
 
-```{r plot-se1, fig.cap = "*H3K27ac signal for the region with the largest overall signal. The region classed as a putative super-enhancer is highlighted in blue*"}
-plotHFGC(
-  se %>% filter(rpmpbp == max(rpmpbp)),
-  features = feat_gr, featcol = feature_colours,
-  genes = hfgc_genes, genecol = gene_col,
-  coverage = bwfl, linecol = line_col,
-  cytobands = bands_df,
-  rotation.title = 90,
-  zoom = 10,
-  ylim = y_lim, # Needs fixing in plotHFGC
-  collapseTranscripts = "meta", genesize = 1,
-  col.title = "black", background.title = "white", 
-  showAxis = FALSE
-)
-```
-
-### Confidence Intervals By Chromosome
+#### Confidence Intervals By Chromosome
 
 ```{r plot-se-confint, fig.cap = "*95% FWER-adjusted Confidence Intervals for the probability of all candidate regions being considered as a super-enhancer by chromosome. Any pair of intervals which do not overlap indicates a possible enrichment for super-enhancer activity on one chromosome. Potential genomic duplication events may also be an unaddressed factor underlying any high signal levels.*"}
 candidate_se %>% 
@@ -1133,7 +1116,26 @@ candidate_se %>%
 ```
 
 
-### The Widest Super-Enhancer
+
+#### The Highest Signal Super-Enhancer
+
+```{r plot-se1, fig.cap = "*H3K27ac signal for the region with the largest overall signal. The region classed as a putative super-enhancer is highlighted in blue*"}
+plotHFGC(
+  se %>% filter(rpmpbp == max(rpmpbp)),
+  features = feat_gr, featcol = feature_colours,
+  genes = hfgc_genes, genecol = gene_col,
+  coverage = bwfl, linecol = line_col,
+  cytobands = bands_df,
+  rotation.title = 90,
+  zoom = 10,
+  ylim = y_lim, # Needs fixing in plotHFGC
+  collapseTranscripts = "meta", genesize = 1,
+  col.title = "black", background.title = "white", 
+  showAxis = FALSE
+)
+```
+
+#### The Widest Super-Enhancer
 
 ```{r plot-se2, fig.cap= "*H3K27ac signal for the widest region passing the ROSE criteria for inclusion as a super-enhancer.*"}
 plotHFGC(
@@ -1182,7 +1184,7 @@ all_out <- list(
 export(consensus_peaks, all_out$consensus_peaks)
 oracle_peaks %>%
   lapply(subset, keep) %>%
-  lapply(select, -keep) %>%
+  lapply(plyranges::select, -keep) %>%
   GRangesList() %>%
   write_rds(all_out$oracle_peaks, compress = "gz")
 names(oracle_peaks) %>% 
@@ -1191,7 +1193,7 @@ names(oracle_peaks) %>%
       id <- glue("{x}_oracle_peaks_bed")
       oracle_peaks[[x]] %>% 
         subset(keep) %>% 
-        select(score, signalValue, pValue, qValue, peak) %>% 
+        plyranges::select(score, signalValue, pValue, qValue, peak) %>% 
         export(all_out[[id]], format = "narrowPeak")
     }
   )

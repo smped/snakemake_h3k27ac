@@ -208,13 +208,6 @@ range_js <- JS(
   }"
 )
 max_signal <- max(merged_results$AveExpr)
-feat_def <- NULL
-if (has_features) feat_def = list(
-  feature = colDef (
-    name = "Feature",
-    aggregate = "unique"
-  )
-)
 cp <-  htmltools::em(
   glue(
     "
@@ -402,8 +395,7 @@ tbl <- de_genes_db_regions %>%
           name = "Binding Region",
           aggregate = "unique"
         )
-      ),
-      feat_def
+      )
     ),
     theme = reactableTheme(style = list(fontSize = fs))
   )
@@ -955,9 +947,8 @@ Using the ranked list of genes from the RNA-Seq data, the 5 genes most highly ra
       ),
       glue("")
     ),
-    "Gene-centric regions {ifelse(has_features, 'and external features', '')} ",
-    "are shown in the top panel. The estimated logFC for {nm} is ",
-    sprintf("%.2f ", df$logFC),
+    "Gene-centric regions are shown in the top panel. ", 
+    "The estimated logFC for {nm} is ", sprintf("%.2f ", df$logFC),
     "with an FDR of {fdr}. Undetected and unchanged genes are shown on ",
     "separate tracks.*"
   )

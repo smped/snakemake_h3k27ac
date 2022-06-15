@@ -1281,11 +1281,6 @@ cp <- htmltools::em(
     "The {show_n} most highly-ranked merged windows by FDR. ",
     "Regions were assigned based on which genomic region showed the largest ",
     "overlap with the merged window. ",
-    ifelse(
-      has_features, 
-      glue("Features are as provided in the file {basename(config$external$features)}"),
-      glue("")
-    ),
     "For windows mapped to large numbers of genes, hovering your mouse over the ", 
     "cell will reveal the full set of genes. ",
     ifelse(
@@ -1502,26 +1497,13 @@ makeCaption <- function(.gr) {
     str_detect(.gr$region, "^Prom") ~ paste("a", .gr$region)
   )
   feat <- c()
-  if (has_features) feat <- case_when(
-    str_detect(.gr$feature, "^[AEIOU]") ~ paste("an", .gr$feature),
-    !str_detect(.gr$feature, "^[AEIOU]") ~ paste("a", .gr$feature)
-  )
   gn <- unlist(.gr$gene_name)
   cp <- c(
     glue(
       "*The {width(.gr)}bp region showing {dir} {source} binding in response to ", 
       "{treat_levels[[2]]} treatment (FDR = {sprintf('%.2e', mcols(.gr)[[fdr_column]])}). ",
       "The range mostly overlapped with {reg}, with all ",
-      "defined regions shown as a contiguous bar. ",
-      ifelse(
-        has_features,
-        glue(
-          "Using the features supplied in {basename(config$external$features)}, ",
-          "this mostly overlapped {feat}, shown as a separate block ",
-          "with the gene-centric regions. "
-        ),
-        glue("")
-      ),
+      "defined regions shown as a contiguous bar. "
     ),
     ifelse(
       .gr$overlaps_ref,
