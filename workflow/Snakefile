@@ -180,14 +180,14 @@ HTML_OUT.extend(
 	)
 )
 
-# ## Pairwise Comparisons: Only if required
-# if pairs:
-# 	HTML_OUT.extend(
-# 		expand(
-# 			os.path.join("docs", "{comp}_pairwise_comparison.html"),
-# 			comp = pairs
-# 		)
-# 	)
+## Pairwise Comparisons: Only if required
+if pairs:
+	HTML_OUT.extend(
+		expand(
+			os.path.join("docs", "{comp}_pairwise_comparison.html"),
+			comp = pairs
+		)
+	)
 
 
 ALL_OUTPUTS.extend(HTML_OUT)

@@ -129,6 +129,7 @@ rnaseq <- names(rna_path) %>%
   lapply(function(x) tibble(gene_id = character(), gene_name = character())) %>% 
   setNames(names(rna_path))
 rna_path <- rna_path[file.exists(rna_path)]
+any_detected <- FALSE
 if (length(rna_path) > 0) {
   rnaseq <- rna_path %>% 
     as.list() %>% 
@@ -141,55 +142,34 @@ if (length(rna_path) > 0) {
       }
     )
   genes_gr <- subset(genes_gr, gene_id %in% bind_rows(rnaseq)$gene_id)
+  if (any(vapply(rnaseq, nrow, integer(1)) > 0)) any_detected <- TRUE
 }
 rna_col <- "gene_id"
 ```
 
 
 ```{r load-hic}
-hic <- GInteractions()
-config$paths$hic[names(pairs)]
-
-hic_path <- here::here(config$external$hic)
+hic_paths <- lapply(names(pairs), function(x) config$paths$hic[[x]]) %>% 
+  lapply(here::here) %>% 
+  setNames(names(pairs))
 has_hic <- FALSE
-if (length(hic_path) > 0)
-  if (file.exists(hic_path)) {
-    has_hic <- TRUE
-    hic <- makeGenomicInteractionsFromFile(hic_path, type = "bedpe")
-    reg_combs <- expand.grid(regions, regions) %>% 
-      as.matrix() %>% 
-      apply(
-        MARGIN = 1, 
-        function(x) {
-          x <- sort(factor(x, levels = regions))
-          paste(as.character(x), collapse = " - ")
+if (any(vapply(hic_paths, length, integer(1)) > 0)) {
+  hic <- hic_paths %>% 
+    lapply(
+      function(x) {
+        if (length(x) == 0) {
+          hic <- GenomicInteractions()
+        } else {
+          hic <- makeGenomicInteractionsFromFile(x, type = "bedpe")
         }
-      ) %>% 
-      unique()
-    hic$regions <- anchors(hic) %>% 
-      vapply(
-        bestOverlap,
-        y = GRangesList(lapply(gene_regions, granges)),
-        character(length(hic))
-      ) %>% 
-      apply(MARGIN = 2, function(x) regions[x]) %>% 
-      apply(
-        MARGIN = 1, 
-        function(x) {
-          x <- sort(factor(x, levels = regions))
-          paste(as.character(x), collapse = " - ")
-        }
-      ) %>% 
-      factor(levels = reg_combs) %>%
-      fct_relabel(
-        str_replace_all,
-        pattern = "Promoter \\([0-9kbp/\\+-]+\\)", replacement = "Promoter"
-      )
-  }
-stopifnot(is(hic, "GInteractions"))
-seqlevels(hic) <- seqlevels(sq)
-seqinfo(hic) <- sq
-hic <- hic[!overlapsAny(hic, blacklist)]
+        seqinfo(hic) <- sq
+        hic[!overlapsAny(hic, blacklist)]
+      }
+    )
+} else{
+  hic <- lapply(names(pairs), function(x) GenomicInteractions)
+}
+if (any(vapply(hic, length, integer(1)) > 0)) has_hic <- TRUE
 ```
 
 ```{r load-data}
@@ -218,11 +198,7 @@ db_results <- seq_along(pairs) %>%
   lapply(read_rds) %>% 
   lapply(mutate, fdr_mu0 = p.adjust(p_mu0, "fdr")) %>% 
   setNames(comps)
-fdr_column <- ifelse(
-  "fdr_ihw" %in% colnames(mcols(db_results[[1]])), 
-  "fdr_ihw", 
-  str_subset("fdr", colnames(mcols(db_results[[1]])))
-)
+fdr_column <- str_subset(colnames(mcols(db_results[[1]])), "fdr")[[1]]
 ```
 
 
@@ -430,7 +406,7 @@ all_windows <- db_results %>%
           resize(keyval_range, width = 1, fix = "center")
         )
       ) %>% 
-      select(
+      plyranges::select(
         !!sym(c1_logcpm) := AveExpr, 
         !!sym(c1_logfc) := logFC, 
         !!sym(c1_status) := status, 
@@ -447,7 +423,7 @@ all_windows <- db_results %>%
           resize(keyval_range, width = 1, fix = "center")
         )
       ) %>% 
-      select(
+      plyranges::select(
         !!sym(c2_logcpm) := AveExpr, 
         !!sym(c2_logfc) := logFC, 
         !!sym(c2_status) := status,
@@ -514,35 +490,20 @@ mcols(all_windows)[["distance"]] <- abs(
   mcols(all_windows)[[glue("{comps[[1]]}_centre")]] - mcols(all_windows)[[glue("{comps[[2]]}_centre")]]
   )
 
-all_windows$hic <- NA
-if (has_hic)
-  all_windows$hic <- overlapsAny(all_windows, hic)
-
-all_windows <- all_windows %>% 
-  select(any_of(c("region", "feature", "hic")), everything()) %>% 
-  mapByFeature(
-    all_gr$gene,
-    prom = GRangesList(
-      ## Add any external features which appear to be promoters
-      ifelse(
-        "feature" %in% colnames(mcols(external_features)), 
-        list(granges(subset(external_features, str_detect(feature, "[Pp]rom")))), 
-        list(GRanges())
-      )[[1]], 
-      granges(gene_regions$promoters)) %>% 
-      unlist() %>% 
-      reduce(),
-    enh = ifelse(
-      "feature" %in% colnames(mcols(external_features)), 
-      list(granges(subset(external_features, str_detect(feature, "[Ee]nhanc")))), 
-      list(GRanges())
-    )[[1]],
-    gi = hic
-  ) 
-all_windows$detected <- all_windows$gene_name
-if (any_detected) all_windows$detected <- endoapply(
-  all_windows$detected, intersect, rnaseq$gene_name
-) 
+gene_mappings <- GRangesList(
+  granges(all_windows) %>% 
+    join_overlap_inner(db_results[[1]]) %>% 
+    plyranges::select(starts_with("gene")),
+  granges(all_windows) %>% 
+    join_overlap_inner(db_results[[2]]) %>% 
+    plyranges::select(starts_with("gene"))
+) %>% 
+  unlist() %>% 
+  sort() %>% 
+  reduceMC()
+all_windows <- join_overlap_left(
+  all_windows, gene_mappings
+)  
 ```
 
 
@@ -573,7 +534,7 @@ direction_colours <- names(colours$direction) %>%
           col2rgb() %>% 
           max()
       )
-      select(x, all_of(comps)) %>% 
+      dplyr::select(x, all_of(comps)) %>% 
         mutate(rgb = rgb)
     }
   ) %>% 
@@ -985,7 +946,7 @@ all_windows %>%
     data = . %>% 
       dplyr::filter(
         !str_detect(status, "Unchanged.+Unchanged"),
-        vapply(detected, length, integer(1)) > 0
+        vapply(gene_name, length, integer(1)) > 0
       ) %>% 
       mutate(
         total_lfc = abs(!!sym(c1_logfc)) + abs(!!sym(c2_logfc)) 
@@ -993,7 +954,7 @@ all_windows %>%
       group_by(status) %>%
       dplyr::filter(total_lfc == max(total_lfc)) %>% 
       mutate(
-        detected = vapply(detected, paste, character(1), collapse = "; "),
+        detected = vapply(gene_name, paste, character(1), collapse = "; "),
         lab = paste(status, detected, sep = ": ") %>% str_wrap(25)
       ),
     size = 3, alpha = 0.6,
@@ -1066,7 +1027,7 @@ all_windows %>%
     data = . %>% 
       dplyr::filter(
         !str_detect(status, "Unchanged.+Unchanged"),
-        vapply(detected, length, integer(1)) > 0
+        vapply(gene_name, length, integer(1)) > 0
       ) %>% 
       mutate(
         total_lfc = abs(!!sym(c1_logfc)) + abs(!!sym(c2_logfc)) 
@@ -1074,7 +1035,7 @@ all_windows %>%
       group_by(region) %>% 
       dplyr::filter(total_lfc == max(total_lfc)) %>% 
       mutate(
-        detected = vapply(detected, paste, character(1), collapse = "; ") %>% 
+        detected = vapply(gene_name, paste, character(1), collapse = "; ") %>% 
           str_wrap(25)
       ),
     size = 3, alpha = 0.6,
@@ -1159,7 +1120,7 @@ all_windows %>%
       group_by(status, n_changed) %>% 
       summarise(n = dplyr::n()) %>% 
       mutate(lab = glue("n = {comma(n)}")),
-    nudge_x = - 0.1 * q ,
+    nudge_x = - 0.08 * q ,
     size = 3.5
   ) +
   facet_grid(
@@ -1195,7 +1156,7 @@ all_windows %>%
       group_by(region) %>% 
       summarise(n = dplyr::n()) %>% 
       mutate(lab = glue("n = {comma(n)}")),
-    nudge_x = - 0.1 * q ,
+    nudge_x = - 0.08 * q ,
     size = 3.5
   ) +
   scale_fill_manual(
@@ -1680,7 +1641,7 @@ grl_to_plot <- all_windows %>%
   ) %>% 
   lapply(function(x) GRanges(x$rng, seqinfo = sq)) %>% 
   GRangesList()
-profile_width <- 5e3
+profile_width <- 10e3
 x_lab <- c(
   seq(0, floor(0.5 * profile_width / 1e3), length.out = 3),
   seq(-floor(0.5 * profile_width / 1e3), 0, length.out = 3)
@@ -1810,7 +1771,7 @@ Groups were restricted to those where differential binding was seen in at least 
 grl_to_plot <- all_windows %>% 
   filter(
     !str_detect(status, "Un.+Un"),
-    vapply(detected, length, integer(1)) > 0
+    vapply(gene_name, length, integer(1)) > 0
   ) %>% 
   as_tibble() %>% 
   rename_all(
@@ -1858,7 +1819,7 @@ annot <- comps %>%
   lapply(
     function(x) {
       col <- glue("{x}_status")
-      select(all_windows, all_of(col)) %>% 
+      plyranges::select(all_windows, all_of(col)) %>% 
         mutate(
           status = str_extract(!!sym(col), "Down|Up|Unchanged|Undetected")
         ) %>% 
@@ -1894,78 +1855,37 @@ feature_colours <- colours$regions
 hfgc_genes <- trans_models
 gene_col <- "grey"
 if (any_detected){
-  rna_lfc_col <- colnames(rnaseq)[str_detect(str_to_lower(colnames(rnaseq)), "logfc")][1]
-  rna_fdr_col <- colnames(rnaseq)[str_detect(str_to_lower(colnames(rnaseq)), "fdr|adjp")][1]
-  if (!is.na(rna_lfc_col) & !is.na(rna_fdr_col)) {
-    hfgc_genes <- trans_models %>% 
-      mutate(
-        status = case_when(
-          !gene %in% rnaseq$gene_id ~ "Undetected",
-          gene %in% dplyr::filter(
-            rnaseq, !!sym(rna_lfc_col) > 0, !!sym(rna_fdr_col) < fdr_alpha
-          )$gene_id ~ "Up",
-          gene %in% dplyr::filter(
-            rnaseq, !!sym(rna_lfc_col) < 0, !!sym(rna_fdr_col) < fdr_alpha
-          )$gene_id ~ "Down",
-          gene %in% dplyr::filter(
-            rnaseq, !!sym(rna_fdr_col) >= fdr_alpha
-          )$gene_id ~ "Unchanged",
-        )
-      ) %>% 
-      splitAsList(.$status) %>% 
-      lapply(select, -status) %>% 
-      GRangesList()
-    gene_col <- colours$direction %>% 
-      setNames(str_to_title(names(.)))
-  }
-}
-
-## External Coverage (Optional)
-if (!is.null(config$external$coverage)) {
-  ext_cov_path <- config$external$coverage %>% 
-    lapply(unlist) %>% 
-    lapply(function(x) setNames(here::here(x), names(x)))
-  bwfl <- c(
-    bwfl[comps],
-    lapply(ext_cov_path, function(x) BigWigFileList(x) %>% setNames(names(x)))
-  )
-  line_col <- c(
-    line_col[comps],
-    ext_cov_path %>% 
-      lapply(
-        function(x) {
-          missing <- setdiff(names(x), names(treat_colours))
-          cmn <- intersect(names(x), names(treat_colours))
-          col <- setNames(character(length(names(x))), names(x))
-          if (length(cmn) > 0) col[cmn] <- treat_colours[cmn]
-          if (length(missing) > 0) 
-            col[missing] <- hcl.colors(
-              max(5, length(missing)), "Zissou 1")[seq_along(missing)]
-          col
-        }
+  rna_lfc_col <- colnames(rnaseq[[1]])[str_detect(str_to_lower(colnames(rnaseq[[1]])), "logfc")][1]
+  rna_fdr_col <- colnames(rnaseq[[1]])[str_detect(str_to_lower(colnames(rnaseq[[1]])), "fdr|adjp")][1]  
+  rna_status <- rnaseq %>% 
+    bind_rows(.id = "source") %>% 
+    mutate(
+      status = case_when(
+        !!sym(rna_fdr_col) < fdr_alpha & !!sym(rna_lfc_col) > 0 ~ glue("{source} Up"),
+        !!sym(rna_fdr_col) < fdr_alpha & !!sym(rna_lfc_col) < 0 ~ glue("{source} Down"),
+        !!sym(rna_fdr_col) > fdr_alpha ~ glue("{source} Unchanged")
       )
-  )
+    ) %>% 
+    group_by(gene_id, gene_name) %>% 
+    summarise(status = paste(status, collapse = " - "), .groups = "drop") %>% 
+    distinct(gene_id, .keep_all = TRUE) %>% 
+    with(
+      structure(status, names = gene_id)
+    )
   
-  y_ranges <- grl_to_plot %>% 
-    unlist() %>% 
-    granges() %>% 
-    resize(w = 10 * width(.), fix = 'center')
+  hfgc_genes$status <- rna_status[hfgc_genes$gene]
+  hfgc_genes$status[is.na(hfgc_genes$status)] <- "Undetected"
+  hfgc_genes <- splitAsList(hfgc_genes, hfgc_genes$status)
   
-  y_lim <- c(
-    y_lim[comps],
-    bwfl[names(config$external$coverage)] %>% 
-      lapply(
-        function(x) {
-          GRangesList(lapply(x, import.bw, which = y_ranges)) %>% 
-            unlist() %>% 
-            filter(score == max(score)) %>% 
-            mcols() %>% 
-            .[["score"]] %>% 
-            c(0) %>% 
-            range()
-        }
-      )
-  )
+  gene_col <- character(length(hfgc_genes)) %>% 
+    setNames(names(hfgc_genes))
+  cmn <- intersect(names(gene_col), names(direction_colours))
+  not_cmn <- setdiff(names(gene_col), names(direction_colours))
+  gene_col[cmn] <- direction_colours[cmn]
+  gene_col[names(gene_col) %in% not_cmn & str_detect(names(gene_col), "Up")] <- colours$direction$up
+  gene_col[names(gene_col) %in% not_cmn & str_detect(names(gene_col), "Down")] <- colours$direction$down
+  gene_col[names(gene_col) %in% not_cmn & str_detect(names(gene_col), "Unch")] <- colours$direction$unchanged
+  gene_col[names(gene_col) %in% not_cmn & str_detect(names(gene_col), "Undetec")] <- colours$direction$undetected
   
 }
 ```
@@ -1989,9 +1909,6 @@ htmltools::tagList(
         filename = png_out,
         width = 10, height = 8, units = "in", res = 300
       )
-      ct <- FALSE
-      if (length(subsetByOverlaps(all_gr$transcript, grl_to_plot[[x]])) > 10)
-        ct <- "meta"
       plotHFGC(
         grl_to_plot[[x]],
         features = feat_gr, featcol = feature_colours,
@@ -1999,10 +1916,9 @@ htmltools::tagList(
         coverage = bwfl, linecol = line_col,
         annotation = annot, annotcol = annot_col,
         cytobands = bands_df,
-        rotation.title = 90,
         zoom = 10,
         ylim = y_lim,
-        collapseTranscripts = ct,
+        collapseTranscripts = "meta",
         col.title = "black", background.title = "white", showAxis = FALSE
       )
       dev.off()
@@ -2052,7 +1968,7 @@ Groups were restricted to those where differential binding was seen in at least 
 grl_to_plot <- all_windows %>% 
   filter(
     !str_detect(status, "Un.+Un"),
-    vapply(detected, length, integer(1)) > 0
+    vapply(gene_name, length, integer(1)) > 0
   ) %>% 
   as_tibble() %>% 
   rename_all(
@@ -2092,30 +2008,6 @@ y_lim <- lapply(
   }
 )
 
-## External Coverage (Optional)
-if (!is.null(config$external$coverage)) {
-    y_ranges <- grl_to_plot %>% 
-    unlist() %>% 
-    granges() %>% 
-    resize(w = 10 * width(.), fix = 'center')
-  
-  y_lim <- c(
-    y_lim[comps],
-    bwfl[names(config$external$coverage)] %>% 
-      lapply(
-        function(x) {
-          GRangesList(lapply(x, import.bw, which = y_ranges)) %>% 
-            unlist() %>% 
-            filter(score == max(score)) %>% 
-            mcols() %>% 
-            .[["score"]] %>% 
-            c(0) %>% 
-            range()
-        }
-      )
-  )
-  
-}
 ```
 
 ```{r plot-top-ranges-logfc}
@@ -2135,9 +2027,6 @@ htmltools::tagList(
         filename = png_out,
         width = 10, height = 8, units = "in", res = 300
       )
-      ct <- FALSE
-      if (length(subsetByOverlaps(all_gr$transcript, grl_to_plot[[x]])) > 10)
-        ct <- "meta"
       plotHFGC(
         grl_to_plot[[x]],
         features = feat_gr, featcol = feature_colours,
@@ -2145,10 +2034,9 @@ htmltools::tagList(
         coverage = bwfl, linecol = line_col,
         annotation = annot, annotcol = annot_col,
         cytobands = bands_df,
-        rotation.title = 90,
         zoom = 10,
         ylim = y_lim,
-        collapseTranscripts = ct,
+        collapseTranscripts = "meta",
         col.title = "black", background.title = "white", showAxis = FALSE
       )
       dev.off()
@@ -2190,7 +2078,8 @@ htmltools::tagList(
 ```
 
 
-```{r add-rna, eval = any_detected, child = here::here('workflow/modules/rnaseq_pairwise.Rmd')}
+```{r add-rna, eval = FALSE, child = here::here('workflow/modules/rnaseq_pairwise.Rmd')}
+## Needs to be modified for 2 RNA-Seq datasets
 ```
 
 # Data Export

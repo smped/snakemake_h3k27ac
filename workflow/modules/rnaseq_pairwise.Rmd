@@ -1,6 +1,7 @@
 # Comparison With RNA Seq
 
 ```{r define-objects}
+## Needs to be modified to include both comparisons
 library(fgsea)
 library(cowplot)
 id2gene <- structure(all_gr$gene$gene_name, names = all_gr$gene$gene_id)
@@ -222,7 +223,7 @@ p <- gsea_nondir_sig %>%
   )
 ```
 
-`r if (nrow(gsea_nondir_sig) == 0) glue("No association was found between {target} binding and *overall* significance in differentially expressed genes.")`
+`r if (nrow(gsea_nondir_sig) == 0) glue("No association was found between {source} binding and *overall* significance in differentially expressed genes.")`
 
 ```{r tbl-gsea_nondir_sig, eval = nrow(gsea_nondir_sig) > 0, echo = nrow(gsea_nondir_sig) > 0}
 cp <-  htmltools::em(
