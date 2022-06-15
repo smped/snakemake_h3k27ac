@@ -962,7 +962,7 @@ This gave a total of `r comma(length(prom))` H3K27ac-defined promoters and `r co
 In order to classify the enhancers with the highest signal as Super-Enhancers, the ROSE model [@WhyteRose] was use to classify the strongest as putative super-enhancers.
 All treatment conditions were merged taking the complete dataset as the source of H3K27ac signal.
 
-### Steps of the ROSE Algorithm (Super Enhancers)
+### Steps of the ROSE Algorithm (Super Enhancers) {.tabset}
 
 The steps are as follows:
 
@@ -1039,6 +1039,8 @@ rpmpbp <- bfl %>%
   as_tibble()
 ```
 
+### Enhancer Width Vs Signal
+
 ```{r plot-width-rpmpbp, fig.width=8, fig.height=6, fig.cap = "*Relationship between merged peak width and Reads Per Million per Base Pair.*"}
 rpmpbp %>%
   ggplot(aes(width/1e3, rpmpbp)) +
@@ -1048,8 +1050,9 @@ rpmpbp %>%
   scale_x_log10() 
 ```
 
+### ROSE Cutoff Plot
 
-```{r plotRose, fig.height=6, fig.cap="Super-Enhancer Detection Using ROSE"}
+```{r plotRose, fig.height=6, fig.width=8, fig.cap="Super-Enhancer Detection Using ROSE"}
 calculate_cutoff <- function(inputVector, drawPlot=TRUE,...){
   inputVector <- sort(inputVector)
   inputVector[inputVector<0]<-0 #set those regions with more control than ranking equal to zero
@@ -1103,6 +1106,31 @@ plotHFGC(
   showAxis = FALSE
 )
 ```
+
+### Confidence Intervals By Chromosome
+
+```{r plot-se-confint, fig.cap = "*95% FWER-adjusted Confidence Intervals for the probability of all candidate regions being considered as a super-enhancer by chromosome. Any pair of intervals which do not overlap indicates a possible enrichment for super-enhancer activity on one chromosome. Potential genomic duplication events may also be an unaddressed factor underlying any high signal levels.*"}
+candidate_se %>% 
+  mutate(se = overlapsAny(., se)) %>%
+  as_tibble(rangeAsChar = FALSE) %>% 
+  with(glm(se ~ 0 + seqnames, family = "binomial")) %>% 
+  glht() %>% 
+  confint() %>% 
+  .[["confint"]] %>% 
+  as_tibble(rownames = "chr") %>%
+  mutate(
+    chr = str_remove(chr, "seqnames") %>% factor(levels = seqlevels(sq)), 
+    across(all_of(c("Estimate", "lwr", "upr")), binomial()$linkinv)
+  ) %>%
+  ggplot(aes(Estimate, fct_rev(chr))) + 
+  geom_point() + 
+  geom_errorbarh(aes(xmin = lwr, xmax = upr)) +
+  labs(
+    x = "Probability of A Candidate Region Being Classed as a Super-Enhancer",
+    y = "Chromosome"
+  )
+```
+
 
 ### The Widest Super-Enhancer
 
