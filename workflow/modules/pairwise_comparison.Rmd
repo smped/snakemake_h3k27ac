@@ -2088,7 +2088,7 @@ htmltools::tagList(
 out_path <- here::here(
   "output", "pairwise_comparisons", paste(sources, collapse = "_")
 )
-if (!dir.exists(out_path)) dir.create(out_path)
+if (!dir.exists(out_path)) dir.create(out_path, recursive = TRUE)
 all_out <- list(
   csv = file.path(
     out_path,
@@ -2122,7 +2122,6 @@ save.image(all_out$renv)
 ```{r export-csv}
 all_windows %>% 
   as_tibble() %>% 
-  dplyr::select(-detected) %>% 
   unnest(all_of("gene_id")) %>% # This ensures correct id2gene mappings
   mutate(gene_name = id2gene[gene_id]) %>% 
   dplyr::select(
