@@ -172,13 +172,13 @@ HTML_OUT.extend(
 )
 
 
-# ## Differential Binding
-# HTML_OUT.extend(
-# 	expand(
-# 		os.path.join("docs", "{cont}_differential_binding.html"),
-# 		cont = make_contrasts(config['comparisons']['contrasts'])
-# 	)
-# )
+## Differential Binding
+HTML_OUT.extend(
+	expand(
+		os.path.join("docs", "{cont}_differential_binding.html"),
+		cont = make_contrasts(config['comparisons']['contrasts'])
+	)
+)
 
 # ## Pairwise Comparisons: Only if required
 # if pairs:

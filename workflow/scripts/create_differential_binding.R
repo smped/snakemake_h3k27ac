@@ -2,7 +2,7 @@ library(tidyverse)
 library(glue)
 
 args <- commandArgs(TRUE)
-target <- args[[1]]
+source <- args[[1]]
 ref <- args[[2]]
 treat <- args[[3]]
 threads <- args[[4]]
@@ -11,7 +11,7 @@ rmd <- args[[5]]
 glue(
 	"
 	---
-	title: '{{target}} Differential Binding: {{treat}} Vs. {{ref}}'
+	title: '{{source}} Differential Binding: {{treat}} Vs. {{ref}}'
 	date: \"`r format(Sys.Date(), '%d %B, %Y')`\"
 	bibliography: references.bib
 	link-citations: true
@@ -21,7 +21,7 @@ glue(
 	```
 
 	```{r set-vals}
-	target <- \"{{target}}\"
+	source <- \"{{source}}\"
 	treat_levels <- c(\"{{ref}}\", \"{{treat}}\")
 	threads <- {{threads}}
 	```

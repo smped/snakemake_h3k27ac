@@ -41,13 +41,13 @@ diff_windows <- merged_results %>%
 
 ## Relationship To Detected Genes {.tabset}
 
-### Detected Genes By `r target` Binding Region
+### Detected Genes By `r source` Binding Region
 
-Firstly, the distribution of merged windows, where `r target` was considered as present, was compared to genes within the RNA-Seq dataset.
+Firstly, the distribution of merged windows, where `r source` was considered as present, was compared to genes within the RNA-Seq dataset.
 Genes were simply considered as detected if present in the RNA-Seq data, or undetected if not present.
 Gene-centric regions were as defined previously.
 
-```{r plot-region-detected, fig.height = 6, fig.cap = glue("*Distribution of {target}-bound windows by region, according to whether the window is mapped to a detected gene in the RNA-Seq dataset.*")}
+```{r plot-region-detected, fig.height = 6, fig.cap = glue("*Distribution of {source}-bound windows by region, according to whether the window is mapped to a detected gene in the RNA-Seq dataset.*")}
 w <- 0.8
 min_p <- 0.05
 merged_results %>%
@@ -90,50 +90,6 @@ merged_results %>%
   theme(panel.grid = element_blank())
 ```
 
-`r ifelse(has_features, "### Detected Genes By Feature", "")`
-
-```{r plot-feature-detected, eval = has_features, echo = has_features, fig.height = 6, fig.cap = glue("*Distribution of {target}-bound windows by externally-defined features from {basename(config$external$features)}, according to whether the window is mapped to a detected gene in the RNA-Seq dataset.*")}
-merged_results %>% 
-  mutate(
-    any_detected = ifelse(
-      vapply(gene_name, length, integer(1)) > 1,
-      "Mapped to Detected Genes",
-      "Mapped to Undetected Genes"
-    )
-  ) %>% 
-  plotPie(fill = "feature", x = "any_detected", label_size = 4, width = w) +
-  geom_text(
-    aes(xlab, ylab, label =lab),
-    data = . %>% 
-      mutate(
-        xlab = x + w*(r + 0.1)*sin(label_radians),
-        ylab = 1 + w*(r + 0.1)*cos(label_radians),
-        lab = glue("{feature}\n{percent(p, 0.1)}") %>% 
-          str_wrap(10)
-      ) %>% 
-      dplyr::filter(p * N > min_p * max(N)),
-    size = 3
-  ) +
-  geom_segment(
-    aes(x_inner, y_inner, xend = x_outer, yend = y_outer),
-     data = . %>% 
-      mutate(
-        x_inner = x + w*r*sin(label_radians),
-        y_inner = 1 + w*r*cos(label_radians),
-        x_outer = x + w*(r + 0.01)*sin(label_radians),
-        y_outer = 1 + w*(r + 0.01)*cos(label_radians),
-      ) %>% 
-      dplyr::filter(p * N > min_p * max(N))
-  ) +
-  scale_fill_manual(
-    values = colours$features %>% 
-      setNames(str_sep_to_title(names(.)))
-  ) +
-  labs(x = "", fill = "External Feature") +
-  theme(panel.grid = element_blank())
-```
-
-
 
 ## Relationship To Differentially Expressed Genes {.tabset}
 
@@ -153,7 +109,7 @@ rna_sig_ranks <- rna_dir_ranks %>%
 dir_gs <- merged_results %>% 
   select(status, starts_with("gene")) %>% 
   as_tibble() %>% 
-  mutate(group = glue("{target} {status}")) %>% 
+  mutate(group = glue("H3K27ac {status}")) %>% 
   split(.$group)%>% 
   lapply(pull, "gene_id") %>% 
   lapply(unlist) %>% 
@@ -164,28 +120,15 @@ reg_dir_gs <- merged_results %>%
     overlaps_ref, status, any_of(c("region", "feature")), starts_with("gene")
   ) %>% 
   as_tibble() %>% 
-  mutate(group = glue("{region} / {target} {status}")) %>% 
+  mutate(group = glue("{region} / H3K27ac {status}")) %>% 
   split(.$group)%>% 
   lapply(pull, "gene_id") %>% 
   lapply(unlist) %>% 
   lapply(unique) %>% 
   .[vapply(., length, integer(1)) > 20]
-if (has_features) {
-  feat_dir_gs <- merged_results %>% 
-  select(
-    overlaps_ref, status, any_of(c("feature")), starts_with("gene")
-  ) %>% 
-  as_tibble() %>% 
-  mutate(group = glue("{feature} / {target} {status}")) %>% 
-  split(.$group)%>% 
-  lapply(pull, "gene_id") %>% 
-  lapply(unlist) %>% 
-  lapply(unique) %>% 
-  .[vapply(., length, integer(1)) > 20]
-}
 ```
 
-### DE Genes Associated with Changed `r target` Binding
+### DE Genes Associated with Changed `r source` Binding
 
 ```{r de-genes-db-regions}
 cmn_genes <- intersect(
@@ -275,18 +218,18 @@ if (has_features) feat_def = list(
 cp <-  htmltools::em(
   glue(
     "
-    Differentially Expressed (DE) genes were checked for {target} binding
+    Differentially Expressed (DE) genes were checked for H3K27ac signal
     regions which showed evidence of changed binding. 
     {comma(length(unique(de_genes_db_regions$range)), 1)} unique regions were 
     mapped to {comma(length(unique(de_genes_db_regions$gene_id)), 1)} DE genes. 
     These were exported as {basename(all_out$de_genes)}.
     Data are presented in a gene-centric manner and ranges may map to multiple
     genes. The full set of ranges considered to be showing eveidence of altered 
-    {target} binding are shown for each gene. The summarised range containing 
+    H3K27ac signal are shown for each gene. The summarised range containing 
     all mapped ranges is given in the collapsed row, along with the range of 
     distances to gene and the range of signal levels. In the cllapsed row, the 
     value for logFC represents the average aross all mapped regions, with the 
-    maximum FDR also shown. If {target} binding occurs within another gene this 
+    maximum FDR also shown. If H3K27ac signal occurs within another gene this 
     is indicated in the 'Region' column.
     "
   )
@@ -380,7 +323,7 @@ tbl <- de_genes_db_regions %>%
           ),
         ),
         ChIP_logCPM = colDef(
-          name = paste(target, "signal (logCPM)"),
+          name = paste(source, "signal (logCPM)"),
           maxWidth = fs*6,
           aggregate = range_js,
           format = colFormat(digits = 2),
@@ -389,7 +332,7 @@ tbl <- de_genes_db_regions %>%
           )
         ),
         ChIP_logFC = colDef(
-          name = paste(target, "logFC"),
+          name = paste(source, "logFC"),
           aggregate = "mean",
           maxWidth = fs*5,
           format = colFormat(digits = 2),
@@ -412,7 +355,7 @@ tbl <- de_genes_db_regions %>%
           )
         ),
         ChIP_FDR = colDef(
-          name = paste0("FDR (", target, ")"),
+          name = paste0("FDR (", source, ")"),
           aggregate = "max",
           maxWidth = fs*5,
           format = colFormat(prefix = "< ", digits = 4),
@@ -433,7 +376,7 @@ tbl <- de_genes_db_regions %>%
           maxWidth = fs*5
         ),
         status = colDef(
-          name = paste(target, "Status"),
+          name = paste(source, "Status"),
           aggregate = "frequency",
           maxWidth = fs*6,
           cell = function(value) {
@@ -473,9 +416,9 @@ div(class = "table",
 ```
 
 
-### P-Values By `r target` Status
+### P-Values By `r source` Status
 
-```{r plot-p-target, fig.height = 6, fig.cap = glue("*P-Values for differential expression partitioned by {target} ChIP peak status. Genes were considered as being mapped to a differentially bound peak if one or more peaks was considered as differentially bound.*")}
+```{r plot-p-source, fig.height = 6, fig.cap = glue("*P-Values for differential expression partitioned by {source} ChIP peak status. Genes were considered as being mapped to a differentially bound peak if one or more peaks was considered as differentially bound.*")}
 y <- ggplot_build(
   tibble(p = rnaseq[[rna_p_col]]) %>% 
     ggplot(aes(p, stat(density))) + 
@@ -487,9 +430,9 @@ y <- ggplot_build(
 rnaseq %>% 
   mutate(
     mapped = case_when(
-      gene_id %in% unlist(diff_windows[names(diff_windows) %in% c("Up", "Down")]) ~ paste(target, "Differentially Bound"),
-      gene_id %in% unlist(diff_windows[names(diff_windows) %in% c("Unchanged")]) ~ paste(target, "Unchanged"),
-      TRUE ~ paste("No", target, "Detected")
+      gene_id %in% unlist(diff_windows[names(diff_windows) %in% c("Up", "Down")]) ~ "H3K27ac Differential Signal",
+      gene_id %in% unlist(diff_windows[names(diff_windows) %in% c("Unchanged")]) ~ "H3K27ac Unchanged",
+      TRUE ~ "No H3K27ac Detected"
     )
   ) %>% 
   ggplot(
@@ -533,14 +476,14 @@ p <- gsea_dir_sig %>%
   )
 ```
 
-`r if (nrow(gsea_dir_sig) == 0) glue("No association was found between {target} binding and *directional* significance in differentially expressed genes.")`
+`r if (nrow(gsea_dir_sig) == 0) glue("No association was found between H3K27ac signal and *directional* significance in differentially expressed genes.")`
 
 ```{r tbl-gsea-dir-sig, eval = nrow(gsea_dir_sig) > 0, echo = nrow(gsea_dir_sig) > 0}
 cp <-  htmltools::em(
   glue(
     "Merged windows were mapped to genes and their position amongst the ",
     "RNA-Seq results was assessed. Windows were classified based on  ",
-    "the direction of {target} binding with ",
+    "the direction of H3K27ac signal change with ",
     "{treat_levels[[2]]} treatment. {nrow(gsea_dir_sig)} sets of windows were ",
     "associated with changes in gene expression, using the sign of ", 
     "fold-change and ranking statistic to initially rank the ", 
@@ -553,17 +496,17 @@ tbl <- gsea_dir_sig %>%
     leadingEdge = lapply(leadingEdge, function(x) id2gene[x]) %>% 
       vapply(paste, character(1), collapse = "; "),
     Direction = ifelse(NES > 0, "\u21E7 Up-regulated", "\u21E9 Down-regulated"),
-    "{target}" := str_extract(pathway, "(Up|Down|Unchanged)$"),
+    H3K27ac := str_extract(pathway, "(Up|Down|Unchanged)$"),
     pathway = str_remove_all(pathway, " / [^/]+$")
   ) %>% 
   dplyr::select(
-    !!sym(target), Windows = size, Direction, 
+    H3K27ac, Windows = size, Direction, 
     p = pval, FDR = padj, `Edge Size`, `Leading Edge` = leadingEdge
   ) %>% 
   reactable(
     filterable = TRUE,
     columns = list2(
-      "{target}" := colDef(
+      H3K27ac = colDef(
         maxWidth = 90,
         cell = function(value) {
           html_symbol <- ""
@@ -642,14 +585,14 @@ p <- gsea_reg_dir_sig %>%
   )
 ```
 
-`r if (nrow(gsea_reg_dir_sig) == 0) glue("No association was found between {target} binding and *directional* significance in differentially expressed genes, when incorporating genomic region.")`
+`r if (nrow(gsea_reg_dir_sig) == 0) glue("No association was found between H3K27ac signal and *directional* significance in differentially expressed genes, when incorporating genomic region.")`
 
 ```{r tbl-gsea-reg-dir_sig, eval = nrow(gsea_reg_dir_sig) > 0, echo = nrow(gsea_reg_dir_sig) > 0}
 cp <-  htmltools::em(
   glue(
     "Merged windows were mapped to genes and their position amongst the ",
     "RNA-Seq results was assessed. Windows were classified based on which ",
-    "region was the best overlap, and the direction of {target} binding with ",
+    "region was the best overlap, and the direction of H3K27ac signal with ",
     "{treat_levels[[2]]} treatment. {nrow(gsea_reg_dir_sig)} sets of windows were ",
     "associated with changes in gene expression, using the sign of ", 
     "fold-change and ranking statistic to initially rank the ", 
@@ -662,11 +605,11 @@ tbl <- gsea_reg_dir_sig %>%
     leadingEdge = lapply(leadingEdge, function(x) id2gene[x]) %>% 
       vapply(paste, character(1), collapse = "; "),
     Direction = ifelse(NES > 0, "\u21E7 Up-regulated", "\u21E9 Down-regulated"),
-    "{target}" := str_extract(pathway, "(Up|Down|Unchanged)$"),
+    H3K27ac = str_extract(pathway, "(Up|Down|Unchanged)$"),
     pathway = str_remove_all(pathway, " / [^/]+$")
   ) %>% 
   dplyr::select(
-    pathway, !!sym(target), Windows = size, Direction, 
+    pathway, H3K27ac, Windows = size, Direction, 
     p = pval, FDR = padj, `Edge Size`, `Leading Edge` = leadingEdge
   ) %>% 
   reactable(
@@ -675,7 +618,7 @@ tbl <- gsea_reg_dir_sig %>%
       pathway = colDef(
         minWidth = 100, name = "Region"
       ),
-      "{target}" := colDef(
+      H3K27ac = colDef(
         maxWidth = 90,
         cell = function(value) {
           html_symbol <- ""
@@ -732,122 +675,6 @@ div(class = "table",
 plot_grid(plotlist = p, nrow = ceiling(length(p) / 3))
 ```
 
-`r if (has_features) "### Windows By Feature"`
-
-```{r gsea_feat_dir_sig_empty, eval = TRUE, echo = FALSE}
-gsea_feat_dir_sig <- tibble()
-```
-
-
-```{r gsea-feat-dir-sig, eval = has_features, echo = has_features}
-gsea_feat_dir <- fgsea(feat_dir_gs, rna_dir_ranks)
-gsea_feat_dir_sig <- gsea_feat_dir %>% 
-  arrange(pval) %>% 
-  dplyr::filter(padj < enrich_alpha) %>% 
-  as_tibble() 
-p <- gsea_feat_dir_sig %>% 
-  dplyr::slice(1:9) %>% 
-  pull("pathway") %>% 
-  lapply(
-    function(x) {
-      plotEnrichment(feat_dir_gs[[x]], rna_dir_ranks) +
-        ggtitle(x) +
-        theme(
-          plot.title = element_text(hjust = 0.5, size = 10)
-        )
-    }
-  )
-```
-
-`r if (has_features){ if (nrow(gsea_feat_dir_sig) == 0) glue("No association was found between {target} binding and *directional* significance in differentially expressed genes, when incorporating external features.")}`
-
-```{r tbl-gsea-feat-dir-sig, eval = has_features & nrow(gsea_feat_dir_sig) > 0, echo = has_features & nrow(gsea_feat_dir_sig) > 0}
-cp <-  htmltools::em(
-  glue(
-    "Merged windows were mapped to genes and their position amongst the ",
-    "RNA-Seq results was assessed. Windows were classified based on which ",
-    "feature was the best overlap, and the direction of {target} binding with ",
-    "{treat_levels[[2]]} treatment. {nrow(gsea_feat_dir_sig)} sets of windows were ",
-    "associated with changes in gene expression, using the sign of ", 
-    "fold-change and ranking statistic to initially rank the ", 
-    "{comma(nrow(rnaseq), 1)} genes considered as detected."
-  )
-)
-tbl <- gsea_feat_dir_sig %>%
-  mutate(
-    `Edge Size` = vapply(leadingEdge, length, integer(1)),
-    leadingEdge = lapply(leadingEdge, function(x) id2gene[x]) %>% 
-      vapply(paste, character(1), collapse = "; "),
-    Direction = ifelse(NES > 0, "\u21E7 Up-regulated", "\u21E9 Down-regulated"),
-    "{target}" := str_extract(pathway, "(Up|Down|Unchanged)$"),
-    pathway = str_remove_all(pathway, " / [^/]+$")
-  ) %>% 
-  dplyr::select(
-    pathway, !!sym(target), Windows = size, Direction, 
-    p = pval, FDR = padj, `Edge Size`, `Leading Edge` = leadingEdge
-  ) %>% 
-  reactable(
-    filterable = TRUE,
-    columns = list2(
-      pathway = colDef(
-        minWidth = 100, name = "Region"
-      ),
-      "{target}" := colDef(
-        maxWidth = 90,
-        cell = function(value) {
-          html_symbol <- ""
-          if (str_detect(value, "Up")) html_symbol <- "\u21E7"
-          if (str_detect(value, "Down")) html_symbol <- "\u21E9"
-          paste(html_symbol, value)
-        },
-        style = function(value) {
-          colour <- case_when(
-            str_detect(value, "Up") ~ colours$direction[["up"]],
-            str_detect(value, "Down") ~ colours$direction[["down"]],
-            TRUE ~ colours$direction[["unchanged"]]
-          )
-          list(color = colour)
-        }
-      ),
-      Windows = colDef(maxWidth = 80),
-      Direction = colDef(
-        name = "Gene Direction",
-        maxWidth = 120,
-        style = function(value) {
-          colour <- ifelse(
-            str_detect(value, "Up"), 
-            colours$direction[["up"]], 
-            colours$direction[["down"]]
-          )
-          list(color = colour)
-        },
-      ),
-      p = colDef(
-        cell = function(value) sprintf("%.2e", value), maxWidth = 80
-      ),
-      FDR = colDef(
-        cell = function(value) sprintf("%.2e", value), maxWidth = 80
-      ),
-      "Edge Size" = colDef(maxWidth = 80),
-     "Leading Edge" = colDef(
-       minWidth = 150,
-       cell = function(value) with_tooltip(value, width = 50)
-     ) 
-    )
-  )
-div(class = "table",
-  div(class = "table-header",
-      div(class = "caption", cp),
-      tbl
-  )
-)
-```
-
-
-```{r barcode-gsea-feat-dir-sig, eval = has_features & nrow(gsea_feat_dir_sig) > 0, echo = has_features & nrow(gsea_feat_dir_sig) > 0, fig.height= 3 * ceiling(length(p) / 3), fig.cap = glue("*Barcode plots for the top {length(p)} sets of windows associated with __directional__ changes in gene expression.*")}
-plot_grid(plotlist = p, nrow = ceiling(length(p) / 3))
-```
-
 
 ## Non-Directional GSEA {.tabset}
 
@@ -871,14 +698,14 @@ p <- gsea_nondir_sig %>%
   )
 ```
 
-`r if (nrow(gsea_nondir_sig) == 0) glue("No association was found between {target} binding and *overall* significance in differentially expressed genes.")`
+`r if (nrow(gsea_nondir_sig) == 0) glue("No association was found between H3K27ac signal and *overall* significance in differentially expressed genes.")`
 
 ```{r tbl-gsea-nondir-sig, eval = nrow(gsea_nondir_sig) > 0, echo = nrow(gsea_nondir_sig) > 0}
 cp <-  htmltools::em(
   glue(
     "Merged windows were mapped to genes and their position amongst the ",
     "RNA-Seq results was assessed. Windows were classified based on  ",
-    "the direction of {target} binding with ",
+    "the direction of H3K27ac signal with ",
     "{treat_levels[[2]]} treatment. {nrow(gsea_nondir_sig)} sets of windows were ",
     "associated with changes in gene expression, using only the p-value to ", 
     "rank the {comma(nrow(rnaseq), 1)} genes considered as detected."
@@ -889,17 +716,17 @@ tbl <- gsea_nondir_sig %>%
     `Edge Size` = vapply(leadingEdge, length, integer(1)),
     leadingEdge = lapply(leadingEdge, function(x) id2gene[x]) %>% 
       vapply(paste, character(1), collapse = "; "),
-    "{target}" := str_extract(pathway, "(Up|Down|Unchanged)$"),
+    H3K27ac = str_extract(pathway, "(Up|Down|Unchanged)$"),
     pathway = str_remove_all(pathway, " / [^/]+$")
   ) %>% 
   dplyr::select(
-    !!sym(target), Windows = size, p = pval, FDR = padj, 
+    H3K27ac, Windows = size, p = pval, FDR = padj, 
     `Edge Size`, `Leading Edge` = leadingEdge
   ) %>% 
   reactable(
     filterable = TRUE,
     columns = list2(
-      "{target}" := colDef(
+      H3K27ac = colDef(
         maxWidth = 120,
         cell = function(value) {
           html_symbol <- ""
@@ -963,14 +790,14 @@ p <- gsea_reg_nondir_sig %>%
   )
 ```
 
-`r if (nrow(gsea_reg_nondir_sig) == 0) glue("No association was found between {target} binding and *overall* significance in differentially expressed genes.")`
+`r if (nrow(gsea_reg_nondir_sig) == 0) glue("No association was found between H3K27ac signal and *overall* significance in differentially expressed genes.")`
 
 ```{r tbl-gsea-reg-nondir-sig, eval = nrow(gsea_reg_nondir_sig) > 0, echo = nrow(gsea_reg_nondir_sig) > 0}
 cp <-  htmltools::em(
   glue(
     "Merged windows were mapped to genes and their position amongst the ",
     "RNA-Seq results was assessed. Windows were classified based on which ",
-    "region was the best overlap, and the direction of {target} binding with ",
+    "region was the best overlap, and the direction of H3K27ac signal with ",
     "{treat_levels[[2]]} treatment. {nrow(gsea_reg_nondir_sig)} sets of windows were ",
     "associated with changes in gene expression, using only the p-value to ", 
     "rank the {comma(nrow(rnaseq), 1)} genes considered as detected."
@@ -981,11 +808,11 @@ tbl <- gsea_reg_nondir_sig %>%
     `Edge Size` = vapply(leadingEdge, length, integer(1)),
     leadingEdge = lapply(leadingEdge, function(x) id2gene[x]) %>% 
       vapply(paste, character(1), collapse = "; "),
-    "{target}" := str_extract(pathway, "(Up|Down|Unchanged)$"),
+    H3K27ac = str_extract(pathway, "(Up|Down|Unchanged)$"),
     pathway = str_remove_all(pathway, " / [^/]+$")
   ) %>% 
   dplyr::select(
-    pathway, !!sym(target), Windows = size, p = pval, FDR = padj, 
+    pathway, H3K27ac, Windows = size, p = pval, FDR = padj, 
     `Edge Size`, `Leading Edge` = leadingEdge
   ) %>% 
   reactable(
@@ -994,7 +821,7 @@ tbl <- gsea_reg_nondir_sig %>%
       pathway = colDef(
         minWidth = 100, name = "Region"
       ),
-      "{target}" := colDef(
+      H3K27ac = colDef(
         maxWidth = 80,
         cell = function(value) {
           html_symbol <- ""
@@ -1036,125 +863,6 @@ div(class = "table",
 ```{r barcode-gsea-reg-nondir-sig, eval = nrow(gsea_reg_nondir_sig) > 0, echo = nrow(gsea_reg_nondir_sig) > 0, fig.height= 3 * ceiling(length(p) / 3), fig.cap = glue("*Barcode plots for the top {length(p)} sets of windows associated with __non-directional__ changes in gene expression.*")}
 plot_grid(plotlist = p, nrow = ceiling(length(p) / 3))
 ```
-
-
-
-`r if (has_features) "### Windows By Feature"`
-
-```{r gsea_feat_nondir_sig_empty, eval = TRUE, echo = FALSE}
-gsea_feat_nondir_sig <- tibble()
-```
-
-```{r gsea-feat-nondir-sig, eval = has_features, echo = has_features}
-gsea_feat_nondir <- fgsea(feat_dir_gs, rna_sig_ranks, scoreType = "pos")
-gsea_feat_nondir_sig <- gsea_feat_nondir %>% 
-  arrange(pval) %>% 
-  dplyr::filter(padj < enrich_alpha) %>% 
-  as_tibble() 
-p <- gsea_feat_nondir_sig %>% 
-  dplyr::slice(1:9) %>% 
-  pull("pathway") %>% 
-  lapply(
-    function(x) {
-      plotEnrichment(feat_dir_gs[[x]], rna_sig_ranks) +
-        ggtitle(x) +
-        theme(
-          plot.title = element_text(hjust = 0.5, size = 10)
-        )
-    }
-  )
-```
-
-`r if (has_features){ if (nrow(gsea_feat_nondir_sig) == 0) glue("No association was found between {target} binding and *directional* significance in differentially expressed genes, when incorporating external features.")}`
-
-```{r tbl-gsea-feat-nondir-sig, eval = has_features & nrow(gsea_feat_nondir_sig) > 0, echo = has_features & nrow(gsea_feat_nondir_sig) > 0}
-cp <-  htmltools::em(
-  glue(
-    "Merged windows were mapped to genes and their position amongst the ",
-    "RNA-Seq results was assessed. Windows were classified based on which ",
-    "feature was the best overlap, and the direction of {target} binding with ",
-    "{treat_levels[[2]]} treatment. {nrow(gsea_feat_nondir_sig)} sets of windows were ",
-    "associated with overall changes in gene expression, using only the ", 
-    "test statistic to rank the ", 
-    "{comma(nrow(rnaseq), 1)} genes considered as detected."
-  )
-)
-tbl <- gsea_feat_nondir_sig %>%
-  mutate(
-    `Edge Size` = vapply(leadingEdge, length, integer(1)),
-    leadingEdge = lapply(leadingEdge, function(x) id2gene[x]) %>% 
-      vapply(paste, character(1), collapse = "; "),
-    Direction = ifelse(NES > 0, "\u21E7 Up-regulated", "\u21E9 Down-regulated"),
-    "{target}" := str_extract(pathway, "(Up|Down|Unchanged)$"),
-    pathway = str_remove_all(pathway, " / [^/]+$")
-  ) %>% 
-  dplyr::select(
-    pathway, !!sym(target), Windows = size, Direction, 
-    p = pval, FDR = padj, `Edge Size`, `Leading Edge` = leadingEdge
-  ) %>% 
-  reactable(
-    filterable = TRUE,
-    columns = list2(
-      pathway = colDef(
-        minWidth = 100, name = "Region"
-      ),
-      "{target}" := colDef(
-        maxWidth = 90,
-        cell = function(value) {
-          html_symbol <- ""
-          if (str_detect(value, "Up")) html_symbol <- "\u21E7"
-          if (str_detect(value, "Down")) html_symbol <- "\u21E9"
-          paste(html_symbol, value)
-        },
-        style = function(value) {
-          colour <- case_when(
-            str_detect(value, "Up") ~ colours$direction[["up"]],
-            str_detect(value, "Down") ~ colours$direction[["down"]],
-            TRUE ~ colours$direction[["unchanged"]]
-          )
-          list(color = colour)
-        }
-      ),
-      Windows = colDef(maxWidth = 80),
-      Direction = colDef(
-        name = "Gene Direction",
-        maxWidth = 120,
-        style = function(value) {
-          colour <- ifelse(
-            str_detect(value, "Up"), 
-            colours$direction[["up"]], 
-            colours$direction[["down"]]
-          )
-          list(color = colour)
-        },
-      ),
-      p = colDef(
-        cell = function(value) sprintf("%.2e", value), maxWidth = 80
-      ),
-      FDR = colDef(
-        cell = function(value) sprintf("%.2e", value), maxWidth = 80
-      ),
-      "Edge Size" = colDef(maxWidth = 80),
-     "Leading Edge" = colDef(
-       minWidth = 150,
-       cell = function(value) with_tooltip(value, width = 50)
-     ) 
-    )
-  )
-div(class = "table",
-  div(class = "table-header",
-      div(class = "caption", cp),
-      tbl
-  )
-)
-```
-
-
-```{r barcode-gsea-feat-nondir-sig, eval = nrow(gsea_feat_nondir_sig) > 0, echo = nrow(gsea_feat_nondir_sig) > 0, fig.height= 3 * ceiling(length(p) / 3), fig.cap = glue("*Barcode plots for the top {length(p)} sets of windows associated with __nondirectional__ changes in gene expression.*")}
-plot_grid(plotlist = p, nrow = ceiling(length(p) / 3))
-```
-
-
 
 
 <!-- Could be done regardless of changes in expression -->
@@ -1206,8 +914,8 @@ hfgc_genes <- hfgc_genes[names(hfgc_genes) != "Undetected"]
 if (!is.null(config$external$coverage)) {
   y_ranges <- granges(unlist(grl_to_plot))
   y_lim <- c(
-    y_lim[target],
-    bwfl[names(bwfl) != target] %>% 
+    y_lim[source],
+    bwfl[names(bwfl) != source] %>% 
       lapply(
         function(x) {
           GRangesList(lapply(x, import.bw, which = y_ranges)) %>% 
@@ -1224,7 +932,7 @@ if (!is.null(config$external$coverage)) {
 i <- 1
 ```
 
-Using the ranked list of gens from the RNA-Seq data, the 5 genes most highly ranked for differential expression, with more than one `r target`-bound window mapped to it were selected for visualisation.
+Using the ranked list of genes from the RNA-Seq data, the 5 genes most highly ranked for differential expression, with more than one `r source`-bound window mapped to it were selected for visualisation.
 
 ```{r make-deg-caption, echo = FALSE}
 .makeDEGCaption <- function(id) {
@@ -1236,14 +944,14 @@ Using the ranked list of gens from the RNA-Seq data, the 5 genes most highly ran
     sprintf("%.3f", df[[rna_fdr_col]])
   )
   glue(
-    "*Region showing all merged {target}-bound windows mapped to ", 
-    "{nm}. Windows considered to be unchanged for {target} are ", 
-    "annotated in grey, with other colours indicating {target} gain or loss. ",
+    "*Region showing all merged {source}-bound windows mapped to ", 
+    "{nm}. Windows considered to be unchanged for {source} are ", 
+    "annotated in grey, with other colours indicating {source} gain or loss. ",
     "Mapped windows are only shown if within 5Mb of {nm}. ",
     ifelse(
       has_hic,
       glue(
-        "HiC Interactions are only shown which directly connect {target} to {nm}. "
+        "HiC Interactions are only shown which directly connect {source} to {nm}. "
       ),
       glue("")
     ),
@@ -1467,7 +1175,7 @@ plotHFGC(
 rnaseq_gsea <- fgsea(gs_by_gsid, rna_dir_ranks)
 ```
 
-The enrichment testing results from the `r target` differential binding analysis were then
+The enrichment testing results from the `r source` differential binding analysis were then
 compared to GSEA results obtained from the RNA-Seq data set.
 
 ### Differentially Bound Windows
@@ -1479,7 +1187,7 @@ cmn_gs <- intersect(
 )
 ```
 
-`r if (length(cmn_gs) == 0) glue("No gene sets were shared between all {target} differentially bound windows and the RNA-Seq data")`
+`r if (length(cmn_gs) == 0) glue("No gene sets were shared between all {source} differentially bound windows and the RNA-Seq data")`
 
 ```{r tbl-cmn-alldiff-gs, eval = length(cmn_gs) > 0, echo = length(cmn_gs) > 0}
 cp <- htmltools::tags$em(
@@ -1529,7 +1237,7 @@ tbl <- goseq_diff %>%
         name = "Gene Set",
         cell = function(value) htmltools::tags$a(
           href = gs_url[[value]], 
-          target = "_blank", 
+          source = "_blank", 
           str_replace_all(value, "_", " ")
         ),
         minWidth = 120
@@ -1587,7 +1295,7 @@ div(class = "table",
 )
 ```
 
-### Windows With Increased `r target`
+### Windows With Increased `r source`
 
 ```{r compare-gained-gsea}
 cmn_gs <- intersect(
@@ -1596,13 +1304,13 @@ cmn_gs <- intersect(
 )
 ```
 
-`r if (length(cmn_gs) == 0) glue("No gene sets were shared between {target} gained windows and the RNA-Seq data")`
+`r if (length(cmn_gs) == 0) glue("No gene sets were shared between {source} gained windows and the RNA-Seq data")`
 
 ```{r tbl-cmn-up-gs, eval = length(cmn_gs) > 0, echo = length(cmn_gs) > 0}
 cp <- htmltools::tags$em(
   glue(
     "
-    Genes mapped to all windows showing evidence of increased {target} binding 
+    Genes mapped to all windows showing evidence of increased H3K27ac signal 
     were tested for enrichment using goseq, and results were compared to GSEA 
     results for the RNA-Seq dataset. The {comma(length(cmn_gs), 1)} Gene Sets 
     found in both analyses are detailed below. Leading Edge genes represent 
@@ -1646,7 +1354,7 @@ tbl <- goseq_diff %>%
         name = "Gene Set",
         cell = function(value) htmltools::tags$a(
           href = gs_url[[value]], 
-          target = "_blank", 
+          source = "_blank", 
           str_replace_all(value, "_", " ")
         ),
         minWidth = 120
@@ -1704,7 +1412,7 @@ div(class = "table",
 )
 ```
 
-### Windows With Decreased `r target`
+### Windows With Decreased `r source`
 
 ```{r compare-decreased-gsea}
 cmn_gs <- intersect(
@@ -1713,13 +1421,13 @@ cmn_gs <- intersect(
 )
 ```
 
-`r if (length(cmn_gs) == 0) glue("No gene sets were shared between {target} decreased windows and the RNA-Seq data")`
+`r if (length(cmn_gs) == 0) glue("No gene sets were shared between {source} decreased windows and the RNA-Seq data")`
 
 ```{r tbl-cmn-down-gs, eval = length(cmn_gs) > 0, echo = length(cmn_gs) > 0}
 cp <- htmltools::tags$em(
   glue(
     "
-    Genes mapped to all windows showing evidence of decreased {target} binding 
+    Genes mapped to all windows showing evidence of decreased H3K27ac signal 
     were tested for enrichment using goseq, and results were compared to GSEA 
     results for the RNA-Seq dataset. The {comma(length(cmn_gs), 1)} Gene Sets 
     found in both analyses are detailed below. Leading Edge genes represent 
@@ -1763,7 +1471,7 @@ tbl <- goseq_diff %>%
         name = "Gene Set",
         cell = function(value) htmltools::tags$a(
           href = gs_url[[value]], 
-          target = "_blank", 
+          source = "_blank", 
           str_replace_all(value, "_", " ")
         ),
         minWidth = 120
