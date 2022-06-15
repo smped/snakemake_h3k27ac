@@ -25,6 +25,7 @@ library(Rsamtools)
 library(Biostrings)
 library(ggside)
 library(reactable)
+library(multcomp)
 ```
 
 ```{r remotes, results = 'hide'}
