@@ -924,7 +924,7 @@ if (!is.null(config$external$coverage)) {
 i <- 1
 ```
 
-Using the ranked list of genes from the RNA-Seq data, the 5 genes most highly ranked for differential expression, with more than one `r source`-bound window mapped to it were selected for visualisation.
+Using the ranked list of genes from the RNA-Seq data, the 5 genes most highly ranked for differential H3K27ac signal, with more than one window mapped to it were selected for visualisation.
 
 ```{r make-deg-caption, echo = FALSE}
 .makeDEGCaption <- function(id) {
@@ -936,14 +936,14 @@ Using the ranked list of genes from the RNA-Seq data, the 5 genes most highly ra
     sprintf("%.3f", df[[rna_fdr_col]])
   )
   glue(
-    "*Region showing all merged {source}-bound windows mapped to ", 
+    "*Region showing all merged H3K27ac windows mapped to ", 
     "{nm}. Windows considered to be unchanged for {source} are ", 
     "annotated in grey, with other colours indicating {source} gain or loss. ",
     "Mapped windows are only shown if within 5Mb of {nm}. ",
     ifelse(
       has_hic,
       glue(
-        "HiC Interactions are only shown which directly connect {source} to {nm}. "
+        "HiC Interactions are only shown which directly connect the H3K27ac bound region to {nm}. "
       ),
       glue("")
     ),
