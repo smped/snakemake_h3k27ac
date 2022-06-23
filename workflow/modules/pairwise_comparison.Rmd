@@ -120,6 +120,16 @@ regions <- vapply(gene_regions, function(x) unique(x$region), character(1))
 region_colours <-  unlist(colours$regions) %>% setNames(regions[names(.)])
 ```
 
+```{r set-fig.path}
+comp_name <- glue(
+  "{names(pairs)[[1]]}_{pairs[[1]][[1]]}_{pairs[[1]][[2]]}-", 
+  "{names(pairs)[[2]]}_{pairs[[2]][[1]]}_{pairs[[2]][[2]]}"
+)
+fig_path <- here::here("docs", "assets", comp_name)
+if (!dir.exists(fig_path)) dir.create(fig_path, recursive = TRUE)
+```
+
+
 ```{r load-rna}
 rna_path <- config$paths$rnaseq[unique(names(pairs))] %>% 
   unlist() %>% 
@@ -204,28 +214,33 @@ fdr_column <- str_subset(colnames(mcols(db_results[[1]])), "fdr")[[1]]
 
 ```{r tbl-funs}
 up_col <- function(x) {
+  if (is.na(x) | is.nan(x)) return("#ffffff")
   rgb(
     colorRamp(c("#ffffff", colours$direction[["up"]]))(x), maxColorValue = 255
   )
 }
 down_col <- function(x) {
+  if (is.na(x) | is.nan(x)) return("#ffffff")
   rgb(
     colorRamp(c("#ffffff", colours$direction[["down"]]))(x), maxColorValue = 255
   )
 }
 unch_col <- function(x) {
+  if (is.na(x) | is.nan(x)) return("#ffffff")
   rgb(
     colorRamp(c("#ffffff", colours$direction[["unchanged"]]))(x), 
     maxColorValue = 255
   )
 }
 lfc_col <- function(x){
+  if (is.na(x) | is.nan(x)) return("#ffffff")
   rgb(
     colorRamp(c(colours$direction[["down"]], "#ffffff", colours$direction[["up"]]))(x), 
     maxColorValue = 255
   )
 }
 expr_col <- function(x){
+  if (is.na(x) | is.nan(x)) return("#ffffff")
   rgb(colorRamp(hcl.colors(9, "TealRose"))(x), maxColorValue = 255)
 }
 bar_style <- function(width = 1, fill = "#e6e6e6", height = "75%", align = c("left", "right"), color = NULL) {
@@ -292,8 +307,6 @@ The sets of treatment-specific *oracle-peaks* were then compared across the comb
 `r if (length(unique(sources)) > 1) "## Consensus Peaks"`
 
 ```{r plot-empty-peaks, results = 'hide', eval = length(unique(sources)) == 1, echo = FALSE}
-fig_path <- here::here("docs", "assets", paste(sources, collapse = "_"))
-if (!dir.exists(fig_path)) dir.create(fig_path, recursive = TRUE)
 fig_name <- sources %>% 
   paste(collapse = "_") %>% 
   paste0("_common_peaks.png")
@@ -302,8 +315,6 @@ file.create(file.path(fig_path, fig_name))
 
 
 ```{r plot-consensus, results = 'hide', eval = length(unique(sources)) > 1, eval = length(unique(sources)) > 1}
-fig_path <- here::here("docs", "assets", paste(sources, collapse = "_"))
-if (!dir.exists(fig_path)) dir.create(fig_path, recursive = TRUE)
 fig_name <- sources %>% 
   paste(collapse = "_") %>% 
   paste0("_common_peaks.png")
@@ -1261,9 +1272,10 @@ pwf_mapped  <- structure(
 ) %>% 
   nullp(bias.data = log10(all_ids$w), plot.fit = TRUE)
 goseq_mapped_res <- tibble(gs_name = character(), adj_p = numeric())
+gs_method <- ifelse(mean(pwf_mapped$DEgenes) > 0.8, "Hypergeometric", "Wallenius")
 if (sum(pwf_mapped$DEgenes) > min_genes & sum(pwf_mapped$DEgenes) < max_genes) {
   goseq_mapped_res <- pwf_mapped %>% 
-    goseq(gene2cat = gs_by_geneid) %>% 
+    goseq(gene2cat = gs_by_geneid, method = gs_method) %>% 
     dplyr::filter(numDEInCat > 0) %>% 
     as_tibble() %>% 
     dplyr::select(
@@ -1282,7 +1294,8 @@ if (sum(pwf_mapped$DEgenes) > min_genes & sum(pwf_mapped$DEgenes) < max_genes) {
 ```
 
 All `r comma(length(mapped_ids))` genes with a mapped binding window from **either** `r collapseGenes(comps, last = " or ")` were compared to the 'universe' of `r comma(nrow(all_ids))` genes in order to ascertain which key gene-sets were likely to be sourceed in either analysis.
-Gene-length was included as the source of any potential sampling bias for a gene being mapped to a source-bound range.
+`r if (gs_method == "Hypergeometric") "No sampling bias offset was incorporated, instead using a simple Hypergeometric model for enrichment testing"`
+`r if (gs_method == "Wallenius") "Gene-length was included as the source of any potential sampling bias for a gene being mapped to a source-bound range."`
 `r if (nrow(goseq_mapped_res) == 0) "No enrichment was found."`
 
 ```{r tbl-goseq-mapped-res, eval = nrow(goseq_mapped_res) > 0, echo = nrow(goseq_mapped_res) > 0}
@@ -1353,9 +1366,10 @@ pwf_t1t2 <- structure(
 ) %>% 
   nullp(bias.data = log10(all_ids$w), plot.fit = TRUE) 
 goseq_t1t2_res <- tibble(gs_name = character(), adj_p = numeric())
+gs_method <- ifelse(mean(pwf_t1t2$DEgenes) > 0.8, "Hypergeometric", "Wallenius")
 if (sum(pwf_t1t2$DEgenes) > min_genes & sum(pwf_t1t2$DEgenes) < max_genes) {
   goseq_t1t2_res <- pwf_t1t2 %>% 
-    goseq(gene2cat = gs_by_geneid) %>% 
+    goseq(gene2cat = gs_by_geneid, gs_method) %>%  
     dplyr::filter(numDEInCat > 0) %>% 
     as_tibble() %>% 
     dplyr::select(
@@ -1374,7 +1388,8 @@ if (sum(pwf_t1t2$DEgenes) > min_genes & sum(pwf_t1t2$DEgenes) < max_genes) {
 ```
 
 All `r comma(length(intersect(comp_ids[[2]], comp_ids[[1]])))` genes with a mapped binding window to **both** `r collapseGenes(comps)` were compared to the 'universe' of `r comma(nrow(all_ids))` genes, in order to ascertain whether any key gene-sets were likely to be sourceed under *both in combination*.
-Gene-length was included as the source of any potential sampling bias for a gene being mapped to a source-bound range.
+`r if (gs_method == "Hypergeometric") "No sampling bias offset was incorporated, instead using a simple Hypergeometric model for enrichment testing"`
+`r if (gs_method == "Wallenius") "Gene-length was included as the source of any potential sampling bias for a gene being mapped to a source-bound range."`
 `r if (nrow(goseq_t1t2_res) == 0) "No enrichment was found."`
 
 ```{r tbl-goseq-t1t2-res, eval = nrow(goseq_t1t2_res) > 0, echo = nrow(goseq_t1t2_res) > 0}
@@ -1447,8 +1462,9 @@ goseq_group_res <- group_ids %>%
       vec <- structure(mapped_ids %in% x, names = mapped_ids)
       pwf <- nullp(vec, bias.data = n_peaks, plot.fit = FALSE)
       res <- tibble(adj_p = numeric())
+      gs_method <- ifelse(mean(pwf$DEgenes) > 0.8, "Hypergeometric", "Wallenius")
       if (sum(pwf$DEgenes) > min_genes & sum(pwf$DEgenes) < max_genes) {
-        res <- goseq(pwf, gene2cat = gs_by_geneid) %>% 
+        res <- goseq(pwf, gene2cat = gs_by_geneid, method = gs_method) %>% 
           as_tibble() %>% 
           dplyr::filter(numDEInCat > 0) %>% 
           mutate(adj_p = p.adjust(over_represented_pvalue, adj_method)) %>% 
@@ -1480,7 +1496,8 @@ goseq_group_res <- group_ids %>%
 
 The same MSigDB gene sets were used for associating any pathways with the combined changes in both `r collapseGenes(comps)`.
 The 'universe' of genes was defined as all `r comma(length(mapped_ids))` gene ids with a binding window mapped from either source.
-For genes mapped to differentially bound windows, the number of windows mapped to each gene was taken as the potential source of any sampling bias
+For genes mapped to differentially bound windows, the number of windows mapped to each gene was taken as the potential source of any sampling bias.
+However, if the number of genes in the test set exceeded 80% of genes in the 'universe', no sampling bias was included, due to issues with extreme values in the current R implementation of Wallenius' Non-Central Hypergeometric Distribution.
 `r if(length(goseq_group_res) == 0) "No enrichment was found amongst any group of windows"`
 
 
@@ -2091,27 +2108,15 @@ out_path <- here::here(
 if (!dir.exists(out_path)) dir.create(out_path, recursive = TRUE)
 all_out <- list(
   csv = file.path(
-    out_path,
-    glue(
-      "{sources[[1]]}_{pairs[[1]][[1]]}_{pairs[[1]][[2]]}-", 
-      "{sources[[2]]}_{pairs[[2]][[1]]}_{pairs[[2]][[2]]}-",
-      "pairwise_comparison.csv.gz"
+    out_path, glue(comp_name, "-pairwise_comparison.csv.gz"
     )
   ),
   results = file.path(
-    out_path,
-    glue(
-      "{sources[[1]]}_{pairs[[1]][[1]]}_{pairs[[1]][[2]]}-", 
-      "{sources[[2]]}_{pairs[[2]][[1]]}_{pairs[[2]][[2]]}-",
-      "all_windows.rds"
-    )
+    out_path, glue(comp_name, "-all_windows.rds")
   ),
   renv = here::here(
-    "output", "envs",
-    glue(
-      "{sources[[1]]}_{pairs[[1]][[1]]}_{pairs[[1]][[2]]}-", 
-      "{sources[[2]]}_{pairs[[2]][[1]]}_{pairs[[2]][[2]]}-",
-      "pairwise_comparison.RData"
+    "output", "envs", 
+    glue(comp_name, "-pairwise_comparison.RData"
     )
   )
 )
